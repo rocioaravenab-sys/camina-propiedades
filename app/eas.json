@@ -7,15 +7,24 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_API_URL": "http://localhost:8000" }
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:8000"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_API_URL": "https://REEMPLAZAR-api-camina.up.railway.app" }
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://192.168.3.166:8000"
+      },
+      "ios": {
+        "simulator": false
+      }
     },
     "production": {
       "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_API_URL": "https://REEMPLAZAR-api-camina.up.railway.app" }
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://REEMPLAZAR-api-camina.up.railway.app"
+      }
     }
   },
   "submit": {

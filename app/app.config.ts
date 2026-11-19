@@ -5,9 +5,15 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 const GOOGLE_MAPS_ANDROID = process.env.GOOGLE_MAPS_API_KEY_ANDROID ?? '';
 const BUNDLE_ID = 'cl.caminapropiedades.app';
+// Proyecto de EAS en la cuenta de Expo we2 (la misma de LaMeno).
+const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? '';
+// Las versiones de prueba pueden apuntar a la API corriendo en el Mac por
+// http://; iOS bloquea http salvo que se permita aquí. Producción usa https.
+const API_SIN_HTTPS = API_URL.startsWith('http://');
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
+  owner: 'we2',
   name: 'caminaPropiedades',
   slug: 'camina-propiedades',
   scheme: 'caminapropiedades',
@@ -24,6 +30,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSLocationWhenInUseUsageDescription:
         'caminaPropiedades usa tu ubicación mientras la app está abierta para mostrarte las propiedades en venta a tu alrededor.',
       ITSAppUsesNonExemptEncryption: false,
+      ...(API_SIN_HTTPS ? { NSAppTransportSecurity: { NSAllowsArbitraryLoads: true, NSAllowsLocalNetworking: true } } : {}),
     },
   },
   android: {
@@ -66,6 +73,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   extra: {
     apiUrl: API_URL,
+    ...(EAS_PROJECT_ID ? { eas: { projectId: EAS_PROJECT_ID } } : {}),
   },
   experiments: {
     typedRoutes: true,
