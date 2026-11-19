@@ -38,8 +38,23 @@ pytest
 2. Variables: `SUPABASE_URL`, `SUPABASE_KEY` (la service key que ya usa la web de Semáforo) y
    `GITHUB_TOKEN` (un token de GitHub con solo lectura de `DossierInmobiliario`, para clonarlo
    al construir la imagen).
+   Si los datos están en el Postgres de Railway, basta `DATABASE_URL` (idealmente un usuario de
+   solo lectura) y no hacen falta las de Supabase.
 3. Para usar una versión nueva del motor de DossierInmobiliario, cambiar el commit en
    `DOSSIER_COMMIT` y volver a desplegar.
+
+## Pasar los datos de Supabase a Postgres en Railway
+
+La API lee Postgres directo cuando está `DATABASE_URL` (`app/datos_sql.py`, sesión de solo
+lectura). Los scrapers ya escriben por `DATABASE_URL`, así que para ellos el cambio es solo esa
+variable. Pasos, con los scrapers detenidos:
+
+1. Crear un Postgres en Railway.
+2. Correr `scripts/migrar_a_railway.sh` con `ORIGEN_URL` (Supabase) y `DESTINO_URL` (Railway).
+   Solo lee de Supabase y compara filas al final.
+3. Cambiar `DATABASE_URL` en el `.env` de los scrapers en el Mac y en esta API.
+4. Antes de apagar Supabase, la web de Semáforo tiene que dejar de leer por PostgREST
+   (`mercado_externo.py` de DossierInmobiliario), igual que se hizo aquí.
 
 ## Pendiente
 

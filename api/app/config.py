@@ -8,6 +8,8 @@ from dataclasses import dataclass
 class Config:
     supabase_url: str
     supabase_clave: str
+    # Si está, la API lee Postgres directo (Railway) en vez de Supabase.
+    database_url: str = ""
     dias_vigencia: int = 7
     # Crédito por defecto del modo inversión (decisión de Rocio, 2026-11-19):
     # pie 10%, 30 años y la tasa que usa la web de Semáforo (4,0%).
@@ -22,6 +24,7 @@ def desde_entorno():
     return Config(
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_clave=os.getenv("SUPABASE_KEY", ""),
+        database_url=os.getenv("DATABASE_URL", ""),
         dias_vigencia=int(os.getenv("DIAS_VIGENCIA", "7")),
         pie_pct=float(os.getenv("CREDITO_PIE_PCT", "10")),
         plazo_anos=int(os.getenv("CREDITO_PLAZO_ANOS", "30")),

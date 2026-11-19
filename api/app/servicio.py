@@ -237,7 +237,7 @@ def salud(fuente: Fuente, config: Config, ahora=None):
     try:
         ultima = fuente.datos_al()
     except DatosError as error:
-        return {"ok": False, "datos_al": None, "alerta": "No se pudo leer Supabase: {}".format(error)}
+        return {"ok": False, "datos_al": None, "alerta": "No se pudo leer la base de datos: {}".format(error)}
     if not ultima:
         return {"ok": False, "datos_al": None, "alerta": "No hay avisos de venta."}
     ahora = ahora or datetime.now(timezone.utc)

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from . import servicio
 from .config import Config, desde_entorno
 from .datos import DatosError, Fuente
+from .datos_sql import FuenteSQL
 
 app = FastAPI(title="caminaPropiedades API", version="0.1.0")
 
@@ -16,8 +17,9 @@ def obtener_config() -> Config:
     return desde_entorno()
 
 
-def obtener_fuente(config: Config = Depends(obtener_config)) -> Fuente:
-    return Fuente(config)
+def obtener_fuente(config: Config = Depends(obtener_config)):
+    """Postgres directo si hay DATABASE_URL; si no, Supabase por PostgREST."""
+    return FuenteSQL(config) if config.database_url else Fuente(config)
 
 
 @app.exception_handler(DatosError)

@@ -123,3 +123,11 @@ def test_salud_alerta_tras_48_horas():
     assert servicio.salud(FuenteFalsa([], datos_al="2026-11-21"), CONFIG, ahora)["ok"] is True
     viejo = servicio.salud(FuenteFalsa([], datos_al="2026-11-18"), CONFIG, ahora)
     assert viejo["ok"] is False and "48 h" in viejo["alerta"]
+
+
+def test_con_database_url_usa_postgres_directo():
+    from app.datos import Fuente
+    from app.datos_sql import FuenteSQL
+
+    assert isinstance(main.obtener_fuente(Config("https://s", "k", database_url="postgresql://x")), FuenteSQL)
+    assert isinstance(main.obtener_fuente(Config("https://s", "k")), Fuente)
