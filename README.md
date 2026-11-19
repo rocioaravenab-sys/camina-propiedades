@@ -5,4 +5,4 @@ cada una te dice si está cara o barata frente a su sector. Todo gratis salvo el
 informe en PDF.
 
 - `api/`: API en Python que usa los datos y el motor de DossierInmobiliario. Ver [api/README.md](api/README.md).
-- La app (Expo) viene en la fase 3.
+- `app/`: la app para iPhone y Android en Expo (React Native). Ver [app/README.md](app/README.md).
