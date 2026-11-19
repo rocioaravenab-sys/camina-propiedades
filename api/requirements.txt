@@ -1,0 +1,6 @@
+fastapi==0.165.0
+uvicorn==0.54.0
+# Lo que necesitan los módulos de DossierInmobiliario que usa la API.
+PyYAML==6.0.2
+# Lectura directa de Postgres (DATABASE_URL), p. ej. en Railway.
+psycopg[binary]==3.2.3
