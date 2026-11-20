@@ -29,7 +29,7 @@ _COLUMNAS = (
     "id_origen,portal,url,comuna,sector,tipo_propiedad,habitaciones,banos,"
     "estacionamientos,precio_venta,moneda,gasto_comun,latitud,longitud,fecha_captura"
 )
-_COLUMNAS_NUEVAS = ",superficie_m2,ubicacion_exacta"
+_COLUMNAS_NUEVAS = ",superficie_m2,ubicacion_exacta,fotos"
 
 
 class DatosError(Exception):
@@ -57,6 +57,19 @@ def _numero(valor):
 def _entero(valor):
     n = _numero(valor)
     return int(n) if n is not None else None
+
+
+def _fotos(valor):
+    """La columna fotos guarda una lista JSON en texto; también acepta una
+    lista ya decodificada. Devuelve [] si no hay fotos o no se puede leer."""
+    if isinstance(valor, str):
+        try:
+            valor = json.loads(valor)
+        except ValueError:
+            return []
+    if not isinstance(valor, list):
+        return []
+    return [u for u in valor if isinstance(u, str) and u.startswith(("http://", "https://"))][:3]
 
 
 def fila_a_aviso(fila, valor_uf):
@@ -95,6 +108,7 @@ def fila_a_aviso(fila, valor_uf):
         ubicacion_exacta=bool(exacta),
         fecha_captura=fila.get("fecha_captura"),
         gasto_comun_clp=_numero(fila.get("gasto_comun")),
+        fotos=_fotos(fila.get("fotos")),
     )
 
 

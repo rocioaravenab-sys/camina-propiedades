@@ -29,6 +29,8 @@ export interface Aviso {
   lon: number | null;
   ubicacion_exacta: boolean;
   visto_el: string | null;
+  gasto_comun?: number | null;
+  fotos?: string[];
   color?: Color;
   desvio_pct?: number | null;
 }

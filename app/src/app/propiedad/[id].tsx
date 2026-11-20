@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
@@ -152,6 +153,13 @@ export default function Ficha() {
     <View style={{ flex: 1, backgroundColor: C.fondo }}>
       {cabecera}
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        {a.fotos && a.fotos.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.fotos}>
+            {a.fotos.map((url) => (
+              <Image key={url} source={{ uri: url }} style={st.foto} contentFit="cover" transition={150} />
+            ))}
+          </ScrollView>
+        ) : null}
         <View style={st.encabezado}>
           <Text style={st.sub}>{caracteristicas}</Text>
           <Text style={st.precio}>{precioCorto(a)}</Text>
@@ -159,6 +167,16 @@ export default function Ficha() {
             {[a.sector, a.comuna].filter(Boolean).join(', ')}
             {a.uf_m2 ? ` · UF ${numero(a.uf_m2, 1)} por m²` : ''}
           </Text>
+          {a.gasto_comun || a.estacionamientos ? (
+            <Text style={st.lugar}>
+              {[
+                a.gasto_comun ? `Gasto común ${clp(a.gasto_comun)}` : null,
+                a.estacionamientos ? `${a.estacionamientos} estac.` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          ) : null}
           {!a.ubicacion_exacta ? <Text style={st.nota}>Ubicación aproximada: el portal no publica la dirección.</Text> : null}
         </View>
 
@@ -382,6 +400,8 @@ function Celda({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 const st = StyleSheet.create({
   barra: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8 },
   encabezado: { paddingHorizontal: 20, paddingTop: 4, gap: 4 },
+  fotos: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 },
+  foto: { width: 260, height: 180, borderRadius: 12, backgroundColor: C.borde },
   sub: { fontSize: 13, color: C.texto3 },
   precio: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.texto },
   lugar: { fontSize: 14, color: C.texto2 },

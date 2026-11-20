@@ -56,6 +56,8 @@ def _aviso_json(aviso, posicion=None):
         "lon": aviso.lon,
         "ubicacion_exacta": aviso.ubicacion_exacta,
         "visto_el": aviso.fecha_captura,
+        "gasto_comun": aviso.gasto_comun_clp,
+        "fotos": aviso.fotos or [],
     }
     if posicion is not None:
         datos["color"] = posicion.color
