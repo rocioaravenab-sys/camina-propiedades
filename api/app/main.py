@@ -47,6 +47,15 @@ def cerca(
     return servicio.cerca(fuente, lat, lon, radio, tipo, dormitorios_min, precio_max_uf)
 
 
+@app.get("/propiedad/{id_aviso}")
+def detalle(id_aviso: str, fuente: Fuente = Depends(obtener_fuente)):
+    """Ficha del aviso: datos, gasto común, días publicado e historial de precio."""
+    resultado = servicio.detalle_aviso(fuente, id_aviso)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Aviso no encontrado")
+    return resultado
+
+
 @app.get("/propiedad/{id_aviso}/comparar")
 def comparar(
     id_aviso: str,

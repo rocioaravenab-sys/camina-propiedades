@@ -53,6 +53,8 @@ class Aviso:
     ubicacion_exacta: bool
     fecha_captura: Optional[str] = None
     gasto_comun_clp: Optional[float] = None
+    # Hasta 3 URLs de fotos del aviso (columna fotos del scraper).
+    fotos: Optional[list] = None
 
     @property
     def uf_m2(self):
