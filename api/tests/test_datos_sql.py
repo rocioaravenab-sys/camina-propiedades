@@ -90,3 +90,15 @@ def test_contra_postgres():
     assert [(s.p50_clp, s.fecha_semana) for s in stats] == [(550000, "2026-11-16")]
     with pytest.raises(DatosError):  # la sesión es de solo lectura
         fuente.consultar("CREATE TABLE intruso (x int)", {})
+
+
+def test_historial_precios_ordenado():
+    pedidas = []
+
+    def consultar(sql, parametros):
+        pedidas.append((sql, parametros))
+        return [{"fecha_captura": date(2026, 11, 1), "precio_venta": Decimal("4850"), "moneda": "UF"}]
+
+    filas = FuenteSQL(CONFIG, consultar=consultar).historial_precios("TT-1")
+    assert filas == [{"fecha_captura": "2026-11-01", "precio_venta": 4850.0, "moneda": "UF"}]
+    assert "ORDER BY fecha_captura" in pedidas[0][0] and pedidas[0][1] == {"id": "TT-1"}

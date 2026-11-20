@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,61 +7,108 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FilaAviso } from '@/components/fila-aviso';
 import { ChipsFiltros } from '@/components/filtros';
 import { Marca } from '@/components/marca';
-import { PinAviso, ZonaAproximada } from '@/components/pin';
-import { Boton, Icono, Punto, Selector } from '@/components/ui';
+import { PinAviso, PinEdificio, ZonaAproximada } from '@/components/pin';
+import { Boton, Icono, Punto } from '@/components/ui';
 import * as api from '@/lib/api';
+import { agruparEdificios, claveZona, cubierta, enLaCuadra, sumar, vacio, type Cargado, type Circulo, type Edificio } from '@/lib/avisos';
+import { DURACION_MS, RADIO_CUADRA_M, useCaminata } from '@/lib/caminata';
 import { useEstado } from '@/lib/estado';
-import { cuadras, fechaCorta } from '@/lib/formato';
+import { fechaCorta, metros, numero, uf } from '@/lib/formato';
 import { C } from '@/lib/tema';
 import { distanciaM, useUbicacionEnVivo, type Coordenada } from '@/lib/ubicacion';
 
-const RADIO_M = 600; // ~5 cuadras
+const RADIO_MIN_M = 600; // ~5 cuadras
+const RADIO_MAX_M = 4000; // lo más que entrega la API por pedido
+const MAX_PINES = 300; // con el mapa muy alejado se dibujan los más cercanos al centro
 const SANTIAGO: Coordenada = { lat: -33.4378, lon: -70.6505 }; // Plaza de Armas
-// Volver a pedir avisos cuando la persona camina más que esto.
-const PASO_RECARGA_M = 80;
 const DELTA = 0.012;
 
-interface Resultado {
-  clave: string;
-  datos: api.RespuestaCerca | null;
-  error?: string;
+interface Vista extends Coordenada {
+  radio: number; // media diagonal de lo que se ve, en metros
+  latDelta: number;
+  lonDelta: number;
 }
 
-function claveZona(z: api.Zona) {
-  return `${z.comuna}|${z.sector ?? ''}|${z.lat}|${z.lon}`;
-}
+type Seleccion = { tipo: 'zona' | 'edificio'; clave: string } | null;
 
 function region(c: Coordenada): Region {
   return { latitude: c.lat, longitude: c.lon, latitudeDelta: DELTA, longitudeDelta: DELTA };
 }
 
+function vistaDe(r: Region): Vista {
+  const alto = r.latitudeDelta * 111320;
+  const ancho = r.longitudeDelta * 111320 * Math.cos((r.latitude * Math.PI) / 180);
+  return { lat: r.latitude, lon: r.longitude, radio: Math.hypot(alto, ancho) / 2, latDelta: r.latitudeDelta, lonDelta: r.longitudeDelta };
+}
+
+function dentro(v: Vista, p: { lat: number | null; lon: number | null }): boolean {
+  if (p.lat == null || p.lon == null) return false;
+  return Math.abs(p.lat - v.lat) <= v.latDelta * 0.6 && Math.abs(p.lon - v.lon) <= v.lonDelta * 0.6;
+}
+
+function duracion(ms: number): string {
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+
 export default function Mapa() {
   const insets = useSafeAreaInsets();
-  const { modo, setModo, filtros, setFiltros } = useEstado();
-  const { permiso, posicion, paso, pedirPermiso } = useUbicacionEnVivo(PASO_RECARGA_M);
+  const { filtros, setFiltros } = useEstado();
+  const caminata = useCaminata();
+  const { permiso, posicion, pedirPermiso } = useUbicacionEnVivo();
   const mapa = useRef<MapView>(null);
 
-  // Mientras "fijo" es null el mapa sigue a la persona y busca alrededor de
-  // ella; si arrastra el mapa o pide otra zona, la búsqueda queda fija ahí.
-  const [fijo, setFijo] = useState<Coordenada | null>(null);
+  // Mientras "siguiendo" el mapa acompaña a la persona; si lo arrastra, se queda donde lo dejó.
+  const [siguiendo, setSiguiendo] = useState(true);
   const [manual, setManual] = useState(false); // mapa de Santiago sin GPS
-  const [vista, setVista] = useState<Coordenada | null>(null);
-  const centro = fijo ?? paso;
-  const siguiendo = fijo === null;
-
-  const [resultado, setResultado] = useState<Resultado | null>(null);
-  const [intento, setIntento] = useState(0);
+  const [vista, setVista] = useState<Vista | null>(null);
+  const [sel, setSel] = useState<Seleccion>(null);
   const [salud, setSalud] = useState<api.RespuestaSalud | null>(null);
-  const [zonaSel, setZonaSel] = useState<string | null>(null);
+  const [fuera, setFuera] = useState(false);
+  const [intento, setIntento] = useState(0);
+  const [error, setError] = useState<{ clave: string; mensaje: string } | null>(null);
+  const [ahora, setAhora] = useState(() => Date.now());
 
-  const clave = centro ? JSON.stringify([centro.lat, centro.lon, filtros, intento]) : null;
-  const cargando = clave !== null && resultado?.clave !== clave;
-  const datos = resultado?.datos ?? null;
-  const error = resultado?.clave === clave ? resultado?.error ?? null : null;
+  // Todo lo ya cargado se va sumando; si cambian los filtros se parte de cero.
+  const claveFiltros = JSON.stringify(filtros);
+  const [guardado, setGuardado] = useState<Cargado>(() => vacio(claveFiltros));
+  const cargado = guardado.filtros === claveFiltros ? guardado : vacio(claveFiltros);
+
+  // Qué falta pedir: lo que se ve (o alrededor de la persona antes de que el mapa avise).
+  const listo = manual || !siguiendo || posicion !== null;
+  const base: Circulo | null = !listo
+    ? null
+    : vista
+      ? { lat: vista.lat, lon: vista.lon, radio: Math.min(Math.max(vista.radio, RADIO_MIN_M), RADIO_MAX_M) }
+      : posicion
+        ? { ...posicion, radio: RADIO_MIN_M }
+        : null;
+  const pedido: Circulo | null =
+    base && !cubierta(cargado, base) ? { ...base, radio: Math.min(Math.round(base.radio * 1.25), RADIO_MAX_M) } : null;
+  const clavePedido = pedido
+    ? JSON.stringify([pedido.lat.toFixed(4), pedido.lon.toFixed(4), pedido.radio, claveFiltros, intento])
+    : null;
+  const cargando = clavePedido !== null && error?.clave !== clavePedido;
 
   useEffect(() => {
     api.salud().then(setSalud).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!pedido || !clavePedido) return;
+    api
+      .cerca(pedido.lat, pedido.lon, pedido.radio, filtros)
+      .then((r) => {
+        // Lo que llega se suma aunque la persona ya haya movido el mapa.
+        setGuardado((g) => sumar(g.filtros === claveFiltros ? g : vacio(claveFiltros), pedido, r));
+        setFuera(r.fuera_de_zona);
+        setError(null);
+      })
+      .catch((e) =>
+        setError({ clave: clavePedido, mensaje: e instanceof Error ? e.message : 'No pudimos cargar las propiedades.' }),
+      );
+  }, [clavePedido]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Seguir a la persona con la cámara mientras camina.
   useEffect(() => {
@@ -69,32 +116,42 @@ export default function Mapa() {
     mapa.current?.animateCamera({ center: { latitude: posicion.lat, longitude: posicion.lon } }, { duration: 500 });
   }, [posicion, siguiendo]);
 
+  // Reloj para el recorrido del modo caminata.
   useEffect(() => {
-    if (!centro || !clave) return;
-    let vigente = true;
-    api
-      .cerca(centro.lat, centro.lon, RADIO_M, filtros)
-      .then((datos) => vigente && setResultado({ clave, datos }))
-      .catch(
-        (e) =>
-          vigente &&
-          setResultado((r) => ({
-            clave,
-            datos: r?.datos ?? null,
-            error: e instanceof Error ? e.message : 'No pudimos cargar las propiedades.',
-          })),
-      );
-    return () => {
-      vigente = false;
-    };
-  }, [clave]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!caminata.activo) return;
+    const t = setInterval(() => setAhora(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, [caminata.activo]);
 
-  const buscar = () => setIntento((n) => n + 1);
+  // Lo que se dibuja: lo cargado que cae en la vista, los más cercanos al centro primero.
+  const { edificios, zonas, total } = useMemo(() => {
+    const todos = Object.values(cargado.avisos);
+    const todasZonas = Object.values(cargado.zonas);
+    if (!vista) return { edificios: agruparEdificios(todos.slice(0, MAX_PINES)), zonas: todasZonas.slice(0, MAX_PINES), total: 0 };
+    const visibles = todos.filter((a) => dentro(vista, a));
+    const zonasVisibles = todasZonas.filter((z) => dentro(vista, z));
+    const cerca = (p: Coordenada) => distanciaM(vista, p);
+    visibles.sort((a, b) => cerca({ lat: a.lat!, lon: a.lon! }) - cerca({ lat: b.lat!, lon: b.lon! }));
+    zonasVisibles.sort((a, b) => cerca(a) - cerca(b));
+    return {
+      edificios: agruparEdificios(visibles.slice(0, MAX_PINES)),
+      zonas: zonasVisibles.slice(0, MAX_PINES),
+      total: visibles.length + zonasVisibles.reduce((n, z) => n + z.cantidad, 0),
+    };
+  }, [cargado, vista]);
+
+  const enCuadra = useMemo(
+    () => (caminata.activo && posicion ? enLaCuadra(Object.values(cargado.avisos), posicion, RADIO_CUADRA_M * 1.5) : []),
+    [caminata.activo, posicion, cargado],
+  );
+
+  const reintentar = () => setIntento((n) => n + 1);
 
   const verSantiago = () => {
     setManual(true);
-    setFijo(SANTIAGO);
-    setZonaSel(null);
+    setSiguiendo(false);
+    setSel(null);
+    setVista(vistaDe(region(SANTIAGO)));
     mapa.current?.animateToRegion(region(SANTIAGO), 400);
   };
 
@@ -104,27 +161,27 @@ export default function Mapa() {
       return;
     }
     setManual(false);
-    setFijo(null);
-    setZonaSel(null);
+    setSiguiendo(true);
+    setSel(null);
     mapa.current?.animateToRegion(region(posicion), 400);
   };
 
-  const buscarAqui = () => {
-    if (!vista) return;
-    setFijo(vista);
-    setZonaSel(null);
+  const abrir = (a: api.Aviso) => router.push({ pathname: '/propiedad/[id]', params: { id: a.id } });
+  const abrirEdificio = (e: Edificio) => (e.avisos.length === 1 ? abrir(e.avisos[0]) : setSel({ tipo: 'edificio', clave: e.clave }));
+
+  const empezarCaminata = () => {
+    setSiguiendo(true);
+    setManual(false);
+    router.push('/caminata');
   };
 
-  const abrir = (a: api.Aviso) => router.push({ pathname: '/propiedad/[id]', params: { id: a.id } });
-
-  const total = (datos?.avisos.length ?? 0) + (datos?.zonas.reduce((n, z) => n + z.cantidad, 0) ?? 0);
-  const zona = zonaSel != null ? datos?.zonas.find((z) => claveZona(z) === zonaSel) : undefined;
-  const lejosDeLaBusqueda = !!(vista && centro && distanciaM(vista, centro) > 250);
+  const zonaSel = sel?.tipo === 'zona' ? cargado.zonas[sel.clave] : undefined;
+  const edificioSel = sel?.tipo === 'edificio' ? edificios.find((e) => e.clave === sel.clave) : undefined;
 
   const [inicial] = useState(() => region(posicion ?? SANTIAGO));
 
   // Fuera de la Región Metropolitana.
-  if (datos?.fuera_de_zona && !manual) {
+  if (fuera && siguiendo && !manual) {
     return (
       <View style={[st.pantallaCentro, { paddingTop: insets.top }]}>
         <View style={st.iconoGrande}>
@@ -147,9 +204,7 @@ export default function Mapa() {
           <Icono nombre="ubicacion" size={44} color={C.azul} grosor={1.8} />
         </View>
         <Text style={st.grande}>Activa tu ubicación</Text>
-        <Text style={st.parrafo}>
-          Usamos tu ubicación solo mientras la app está abierta, para mostrarte lo que está en venta a tu alrededor.
-        </Text>
+        <Text style={st.parrafo}>Usamos tu ubicación para mostrarte lo que está en venta a tu alrededor.</Text>
         <View style={{ alignSelf: 'stretch', marginTop: 8, gap: 6 }}>
           <Boton texto="Abrir ajustes" tipo="oscuro" onPress={() => Linking.openSettings()} />
           <Boton texto="Ver el mapa de Santiago" tipo="enlace" onPress={verSantiago} />
@@ -157,6 +212,8 @@ export default function Mapa() {
       </View>
     );
   }
+
+  const restante = caminata.activo ? caminata.inicio + DURACION_MS - ahora : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.mapa }}>
@@ -169,42 +226,58 @@ export default function Mapa() {
         showsMyLocationButton={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}
-        onPress={() => setZonaSel(null)}
+        onPress={() => setSel(null)}
         onRegionChangeComplete={(r, detalles) => {
-          setVista({ lat: r.latitude, lon: r.longitude });
-          if (detalles?.isGesture && !fijo) setFijo(centro ?? { lat: r.latitude, lon: r.longitude });
+          setVista(vistaDe(r));
+          if (detalles?.isGesture) setSiguiendo(false);
         }}>
-        {datos?.zonas.map((z) => (
+        {zonas.map((z) => (
           <ZonaAproximada
             key={claveZona(z)}
             zona={z}
-            activa={zonaSel === claveZona(z)}
-            onPress={() => setZonaSel(claveZona(z))}
+            activa={sel?.tipo === 'zona' && sel.clave === claveZona(z)}
+            onPress={() => setSel({ tipo: 'zona', clave: claveZona(z) })}
           />
         ))}
-        {datos?.avisos.map((a) => <PinAviso key={a.id} aviso={a} onPress={() => abrir(a)} />)}
+        {edificios.map((e) =>
+          e.avisos.length === 1 ? (
+            <PinAviso key={e.avisos[0].id} aviso={e.avisos[0]} onPress={() => abrir(e.avisos[0])} />
+          ) : (
+            <PinEdificio
+              key={e.clave}
+              edificio={e}
+              activo={sel?.tipo === 'edificio' && sel.clave === e.clave}
+              onPress={() => abrirEdificio(e)}
+            />
+          ),
+        )}
       </MapView>
 
-      {/* Cabecera: marca, modo y filtros */}
+      {/* Cabecera: marca, modo caminata y filtros */}
       <View style={[st.arriba, { top: insets.top + 8 }]} pointerEvents="box-none">
-        <View style={st.cabecera}>
-          <Marca />
-          <Selector
-            chico
-            valor={modo}
-            onCambio={setModo}
-            opciones={[
-              { valor: 'vivir', texto: 'Vivir' },
-              { valor: 'invertir', texto: 'Invertir' },
-            ]}
-          />
-        </View>
-        <ChipsFiltros filtros={filtros} onCambio={setFiltros} />
-        {lejosDeLaBusqueda ? (
-          <Pressable style={st.buscarAqui} onPress={buscarAqui} accessibilityRole="button">
-            <Text style={st.buscarAquiTexto}>Buscar en esta zona</Text>
-          </Pressable>
-        ) : null}
+        {caminata.activo ? (
+          <View style={st.barraCaminata}>
+            <Icono nombre="caminar" color="#FFFFFF" grosor={2.2} />
+            <View style={{ flex: 1 }}>
+              <Text style={st.barraTitulo}>Modo caminata activo</Text>
+              <Text style={st.barraTexto}>El mapa se actualiza solo. Te avisamos al pasar por propiedades en venta.</Text>
+            </View>
+            <Pressable onPress={caminata.detener} style={st.detener} accessibilityRole="button">
+              <Text style={st.detenerTexto}>Detener</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={st.cabecera}>
+              <Marca />
+              <Pressable onPress={empezarCaminata} style={st.botonCaminata} accessibilityRole="button">
+                <Icono nombre="caminar" size={16} color={C.azul} grosor={2.2} />
+                <Text style={st.botonCaminataTexto}>Modo caminata</Text>
+              </Pressable>
+            </View>
+            <ChipsFiltros filtros={filtros} onCambio={setFiltros} />
+          </>
+        )}
       </View>
 
       <Pressable
@@ -218,35 +291,75 @@ export default function Mapa() {
       {/* Panel inferior */}
       <View style={st.panel}>
         <View style={st.asa} />
-        {zona ? (
+        {zonaSel || edificioSel ? (
           <>
             <View style={st.panelTitulo}>
               <Text style={st.titulo} numberOfLines={1}>
-                {zona.cantidad === 1 ? '1 aviso' : `${zona.cantidad} avisos`} en {zona.sector || zona.comuna}
+                {zonaSel
+                  ? `${zonaSel.cantidad === 1 ? '1 aviso' : `${zonaSel.cantidad} avisos`} en ${zonaSel.sector || zonaSel.comuna}`
+                  : `${edificioSel!.avisos.length} en este edificio`}
               </Text>
-              <Pressable onPress={() => setZonaSel(null)} accessibilityLabel="Cerrar" hitSlop={10}>
+              <Pressable onPress={() => setSel(null)} accessibilityLabel="Cerrar" hitSlop={10}>
                 <Icono nombre="cerrar" size={20} color={C.texto3} />
               </Pressable>
             </View>
-            <Text style={st.nota}>El portal no publica la dirección exacta: están en algún punto de esta zona.</Text>
+            {zonaSel ? (
+              <Text style={st.nota}>El portal no publica la dirección exacta: están en algún punto de esta zona.</Text>
+            ) : null}
             <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
-              {zona.avisos.map((a) => (
+              {(zonaSel ? zonaSel.avisos : edificioSel!.avisos).map((a) => (
                 <View key={a.id} style={st.filaBorde}>
                   <FilaAviso aviso={a} onPress={() => abrir(a)} />
                 </View>
               ))}
             </ScrollView>
           </>
+        ) : caminata.activo ? (
+          <>
+            <Text style={st.titulo}>En esta cuadra</Text>
+            {enCuadra.length === 0 ? (
+              <Text style={st.nota}>Nada en venta a menos de una cuadra. Sigue caminando y te avisamos.</Text>
+            ) : (
+              enCuadra.slice(0, 3).map((e) => (
+                <Pressable key={e.clave} onPress={() => abrirEdificio(e)} style={st.filaCuadra} accessibilityRole="button">
+                  <View style={st.iconoEdificio}>
+                    <Icono nombre="edificio" color={C.azul} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.filaTitulo} numberOfLines={1}>
+                      {e.avisos.length === 1 ? `${e.avisos[0].tipo} en venta` : `Edificio con ${e.avisos.length} en venta`}
+                    </Text>
+                    <Text style={st.nota} numberOfLines={1}>
+                      {[
+                        e.avisos[0].precio_uf ? `${e.avisos.length > 1 ? 'Desde ' : ''}${uf(e.avisos[0].precio_uf)}` : null,
+                        e.avisos.some((a) => a.color === 'verde') ? (e.avisos.length > 1 ? 'uno bajo el sector' : 'bajo el sector') : null,
+                        `a ${metros(e.distancia)}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                  <Icono nombre="derecha" size={18} color={C.texto3} />
+                </Pressable>
+              ))
+            )}
+            <View style={st.panelTitulo}>
+              <Text style={st.nota}>
+                Recorrido: {numero(caminata.distancia_m / 1000, 1)} km · {duracion(ahora - caminata.inicio)}
+              </Text>
+              <Text style={st.nota}>Se apaga sola en {duracion(restante)}</Text>
+            </View>
+          </>
         ) : (
           <>
             <View style={st.panelTitulo}>
               <Text style={st.titulo}>
-                {!centro
+                {!listo
                   ? 'Buscando tu ubicación…'
-                  : error
+                  : error && !cargando
                     ? 'Sin conexión con el mapa'
-                    : datos
-                      ? `${total} en venta a ${cuadras(datos.radio_m ?? RADIO_M)}`
+                    : vista
+                      ? `${numero(total)} en venta en esta vista`
                       : 'Cargando propiedades…'}
               </Text>
               {cargando ? (
@@ -255,13 +368,14 @@ export default function Mapa() {
                 <Text style={st.nota}>Datos al {fechaCorta(salud.datos_al)}</Text>
               ) : null}
             </View>
-            {error ? (
+            {error && !cargando ? (
               <View style={{ gap: 6 }}>
-                <Text style={st.nota}>{error}</Text>
-                <Boton texto="Reintentar" tipo="enlace" onPress={buscar} />
+                <Text style={st.nota}>{error.mensaje}</Text>
+                <Boton texto="Reintentar" tipo="enlace" onPress={reintentar} />
               </View>
             ) : (
               <>
+                <Text style={st.texto2}>Aleja el mapa y se van sumando más propiedades.</Text>
                 <View style={st.leyenda}>
                   <View style={st.leyendaItem}>
                     <Punto color={C.verde} />
@@ -310,16 +424,36 @@ const st = StyleSheet.create({
     paddingHorizontal: 16,
     ...sombra,
   },
-  buscarAqui: {
-    alignSelf: 'center',
-    backgroundColor: C.texto,
+  botonCaminata: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.azulClaro,
     borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    minHeight: 40,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 36,
+  },
+  botonCaminataTexto: { color: C.azul, fontWeight: '700', fontSize: 13 },
+  barraCaminata: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.azul,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingLeft: 16,
+    paddingRight: 12,
     ...sombra,
   },
-  buscarAquiTexto: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  barraTitulo: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  barraTexto: { color: '#FFFFFF', opacity: 0.9, fontSize: 12 },
+  detener: { backgroundColor: '#FFFFFF', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, minHeight: 36, justifyContent: 'center' },
+  detenerTexto: { color: C.azul, fontWeight: '700', fontSize: 13 },
+  filaCuadra: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.fondo, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
+  iconoEdificio: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.azulClaro, alignItems: 'center', justifyContent: 'center' },
+  filaTitulo: { fontSize: 14, fontWeight: '700', color: C.texto },
+  texto2: { fontSize: 13, color: C.texto2 },
   miUbicacion: {
     position: 'absolute',
     right: 16,

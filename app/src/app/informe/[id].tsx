@@ -24,13 +24,13 @@ const INCLUYE = [
 export default function Informe() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { modo, informes } = useEstado();
+  const { informes } = useEstado();
   const { disponible, precio, estado, comprar, limpiar } = useCompras();
   const [aviso, setAviso] = useState<api.Aviso | null>(null);
 
   useEffect(() => {
     limpiar();
-    if (id) api.comparar(id, 'vivir').then((r) => setAviso(r.aviso)).catch(() => {});
+    if (id) api.detalle(id).then((r) => setAviso(r.aviso)).catch(() => {});
   }, [id, limpiar]);
 
   const yaComprado = informes.find((i) => i.id_aviso === id);
@@ -99,7 +99,7 @@ export default function Informe() {
               deshabilitado={!disponible}
               onPress={() =>
                 id &&
-                comprar({ id_aviso: id, modo, titulo: aviso ? textoAviso(aviso) : titulo })
+                comprar({ id_aviso: id, modo: 'invertir', titulo: aviso ? textoAviso(aviso) : titulo })
               }
             />
             <Text style={st.nota}>

@@ -22,10 +22,14 @@ def _aviso(id, precio_uf, dlat=0.0, exacta=True, sector="Plaza Ñuñoa"):
 
 
 class FuenteFalsa:
-    def __init__(self, avisos, estadisticas=(), datos_al="2026-11-18"):
+    def __init__(self, avisos, estadisticas=(), datos_al="2026-11-18", historial=()):
         self.avisos = avisos
         self.estadisticas = list(estadisticas)
         self._datos_al = datos_al
+        self.historial = list(historial)
+
+    def historial_precios(self, id_origen):
+        return self.historial
 
     def avisos_cerca(self, lat, lon, radio_m, valor_uf):
         return self.avisos
@@ -81,6 +85,18 @@ def test_cerca_filtra_por_precio(cliente):
     assert [a["id"] for a in r.json()["avisos"]] == ["barato"]
 
 
+def test_cerca_con_mapa_alejado_trae_los_mas_cercanos(cliente, monkeypatch):
+    monkeypatch.setattr(servicio, "MAXIMO_AVISOS", 3)
+    r = cliente(FuenteFalsa(_sector())).get(
+        "/cerca", params={"lat": -33.4560, "lon": -70.5970, "radio": 4000})
+    datos = r.json()
+    assert datos["recortado"] is True
+    assert datos["radio_m"] == 4000
+    total = len(datos["avisos"]) + sum(z["cantidad"] for z in datos["zonas"])
+    assert total == 3
+    assert "c5" not in {a["id"] for a in datos["avisos"]}  # el más lejano queda fuera
+
+
 def test_comparar_para_vivir(cliente):
     r = cliente(FuenteFalsa(_sector())).get("/propiedad/barato/comparar")
     datos = r.json()
@@ -114,7 +130,30 @@ def test_invertir_sin_arriendos_lo_dice(cliente):
     assert r.json()["inversion"]["disponible"] is False
 
 
+def test_detalle_trae_dias_publicado_y_baja_de_precio(cliente, monkeypatch):
+    historial = [
+        {"fecha_captura": "2026-10-01", "precio_venta": 4600, "moneda": "UF"},
+        {"fecha_captura": "2026-10-08", "precio_venta": 4600, "moneda": "UF"},
+        {"fecha_captura": "2026-11-10", "precio_venta": 4400, "moneda": "UF"},
+    ]
+    r = cliente(FuenteFalsa(_sector(), historial=historial)).get("/propiedad/barato")
+    datos = r.json()
+    assert datos["aviso"]["color"] == "verde"
+    assert datos["publicado_desde"] == "2026-10-01"
+    assert datos["dias_publicado"] >= 49
+    assert [h["precio"] for h in datos["historial"]] == [4600, 4400]
+    assert datos["cambio_precio"]["pct"] == pytest.approx(-4.3, abs=0.05)
+    assert datos["precio_clp"] == 4400 * UF
+
+
+def test_detalle_sin_historial(cliente):
+    datos = cliente(FuenteFalsa(_sector())).get("/propiedad/barato").json()
+    assert datos["historial"] == [] and datos["cambio_precio"] is None
+    assert datos["publicado_desde"] == "2026-11-18"
+
+
 def test_aviso_inexistente_da_404(cliente):
+    assert cliente(FuenteFalsa([])).get("/propiedad/nada").status_code == 404
     assert cliente(FuenteFalsa([])).get("/propiedad/nada/comparar").status_code == 404
 
 

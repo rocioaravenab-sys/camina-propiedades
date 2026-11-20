@@ -31,18 +31,16 @@ export interface CreditoUsuario {
 }
 
 interface Datos {
-  modo: Modo;
   filtros: Filtros;
   credito: CreditoUsuario;
   favoritos: Record<string, Favorito>;
   informes: InformeGuardado[];
 }
 
-const INICIAL: Datos = { modo: 'vivir', filtros: {}, credito: {}, favoritos: {}, informes: [] };
+const INICIAL: Datos = { filtros: {}, credito: {}, favoritos: {}, informes: [] };
 
 interface Estado extends Datos {
   listo: boolean;
-  setModo: (m: Modo) => void;
   setFiltros: (f: Filtros) => void;
   setCredito: (c: CreditoUsuario) => void;
   alternarFavorito: (a: Aviso) => void;
@@ -60,7 +58,11 @@ export function EstadoProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(CLAVE)
       .then((txt) => {
-        if (txt) setDatos({ ...INICIAL, ...JSON.parse(txt) });
+        if (txt) {
+          // La v1 guardaba el modo Vivir/Invertir; ya no se usa.
+          const { modo: _modo, ...guardado } = JSON.parse(txt);
+          setDatos({ ...INICIAL, ...guardado });
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -74,7 +76,6 @@ export function EstadoProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(CLAVE, JSON.stringify(datos)).catch(() => {});
   }, [datos]);
 
-  const setModo = useCallback((modo: Modo) => setDatos((d) => ({ ...d, modo })), []);
   const setFiltros = useCallback((filtros: Filtros) => setDatos((d) => ({ ...d, filtros })), []);
   const setCredito = useCallback((credito: CreditoUsuario) => setDatos((d) => ({ ...d, credito })), []);
   const alternarFavorito = useCallback(
@@ -104,8 +105,8 @@ export function EstadoProvider({ children }: { children: ReactNode }) {
   );
 
   const valor = useMemo(
-    () => ({ ...datos, listo, setModo, setFiltros, setCredito, alternarFavorito, marcarNoEsta, agregarInforme }),
-    [datos, listo, setModo, setFiltros, setCredito, alternarFavorito, marcarNoEsta, agregarInforme],
+    () => ({ ...datos, listo, setFiltros, setCredito, alternarFavorito, marcarNoEsta, agregarInforme }),
+    [datos, listo, setFiltros, setCredito, alternarFavorito, marcarNoEsta, agregarInforme],
   );
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }

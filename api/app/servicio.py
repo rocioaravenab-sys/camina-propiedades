@@ -15,7 +15,9 @@ from .dossier import banderas_sector, calculos, conectividad, criminalidad, geo,
 _RM_LAT = (-34.30, -32.90)
 _RM_LON = (-71.75, -69.75)
 
-RADIO_MAXIMO_M = 1500
+RADIO_MAXIMO_M = 4000
+# Con el mapa muy alejado se devuelven solo los más cercanos al centro.
+MAXIMO_AVISOS = 300
 
 # El barrio (Overpass/OpenStreetMap) cambia poco y Overpass limita consultas:
 # se guarda por sector (~100 m) durante 30 días.
@@ -108,6 +110,10 @@ def cerca(fuente: Fuente, lat, lon, radio_m=600, tipo=None, dormitorios_min=None
         if a.lat is not None and geo.distancia_metros(lat, lon, a.lat, a.lon) <= radio_m
     ]
     en_radio = _filtrar(en_radio, tipo, dormitorios_min, precio_max_uf)
+    recortado = len(en_radio) > MAXIMO_AVISOS
+    if recortado:
+        en_radio.sort(key=lambda a: geo.distancia_metros(lat, lon, a.lat, a.lon))
+        en_radio = en_radio[:MAXIMO_AVISOS]
 
     avisos, zonas = [], {}
     for aviso in en_radio:
@@ -126,6 +132,7 @@ def cerca(fuente: Fuente, lat, lon, radio_m=600, tipo=None, dormitorios_min=None
     return {
         "fuera_de_zona": False,
         "radio_m": radio_m,
+        "recortado": recortado,
         "valor_uf": uf,
         "avisos": avisos,
         "zonas": list(zonas.values()),
@@ -232,6 +239,76 @@ def _inversion_o_motivo(fuente, aviso, uf, pie_pct, tasa_pct, plazo_anos):
         "dormitorios": segmento.dormitorios, "banos": segmento.banos,
     }
     return resultado
+
+
+def _historial_json(filas):
+    puntos = []
+    for f in filas:
+        try:
+            precio = float(f.get("precio_venta"))
+        except (TypeError, ValueError):
+            continue
+        if precio <= 0 or not f.get("fecha_captura"):
+            continue
+        puntos.append({"fecha": str(f["fecha_captura"])[:10], "precio": precio, "moneda": (f.get("moneda") or "UF").upper()})
+    # Solo los cambios: una fila por cada precio distinto al anterior.
+    cambios = []
+    for p in puntos:
+        if not cambios or (p["precio"], p["moneda"]) != (cambios[-1]["precio"], cambios[-1]["moneda"]):
+            cambios.append(p)
+    return puntos, cambios
+
+
+def detalle_aviso(fuente: Fuente, id_aviso, hoy=None):
+    """La ficha de un aviso: sus datos, cuánto lleva publicado y si cambió de precio.
+
+    Trae también el color del precio frente al sector (sin comparables ni
+    barrio: eso es /comparar) para mostrarlo como adelanto en la ficha.
+    """
+    uf = valor_uf()
+    aviso = fuente.aviso(id_aviso, uf)
+    if aviso is None:
+        return None
+    try:
+        puntos, cambios = _historial_json(fuente.historial_precios(id_aviso))
+    except Exception:
+        puntos, cambios = [], []
+
+    posicion = None
+    if aviso.lat is not None:
+        try:
+            candidatos = fuente.avisos_cerca(aviso.lat, aviso.lon, comparar.RADIO_SECTOR_M, uf)
+            posicion = comparar.posicion_precio(aviso, comparar.comparables_de(aviso, candidatos))
+        except DatosError:
+            posicion = None
+
+    hoy = hoy or datetime.now(timezone.utc).date()
+    primera = puntos[0]["fecha"] if puntos else (aviso.fecha_captura or None)
+    dias = None
+    if primera:
+        try:
+            dias = (hoy - datetime.fromisoformat(primera[:10]).date()).days
+        except ValueError:
+            dias = None
+
+    cambio = None
+    if len(cambios) >= 2 and cambios[0]["moneda"] == cambios[-1]["moneda"]:
+        antes, ahora = cambios[0]["precio"], cambios[-1]["precio"]
+        cambio = {
+            "desde": antes, "hasta": ahora, "moneda": cambios[-1]["moneda"],
+            "pct": round((ahora - antes) / antes * 100, 1), "fecha": cambios[-1]["fecha"],
+        }
+
+    return {
+        "aviso": _aviso_json(aviso, posicion),
+        "precio_etiqueta": posicion.etiqueta if posicion else None,
+        "precio_clp": round(aviso.precio_uf * uf) if (aviso.precio_uf and uf) else None,
+        "valor_uf": uf,
+        "publicado_desde": primera,
+        "dias_publicado": dias,
+        "historial": cambios,
+        "cambio_precio": cambio,
+    }
 
 
 def salud(fuente: Fuente, config: Config, ahora=None):

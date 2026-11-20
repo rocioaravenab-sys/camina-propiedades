@@ -89,7 +89,7 @@ export function ComprasProvider({ children }: { children: ReactNode }) {
       enCurso.current.add(idTransaccion);
       setEstado({ fase: 'descargando', id_aviso: idAviso });
       try {
-        const modo = reintento?.modo ?? pendiente?.modo ?? 'vivir';
+        const modo = reintento?.modo ?? pendiente?.modo ?? 'invertir';
         const pdf = await api.informe({
           id_aviso: idAviso,
           modo,

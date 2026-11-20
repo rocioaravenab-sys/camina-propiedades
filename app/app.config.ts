@@ -11,6 +11,12 @@ const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? 'f90bcf66-b212-48e4-8e46-89
 // http://; iOS bloquea http salvo que se permita aquí. Producción usa https.
 const API_SIN_HTTPS = API_URL.startsWith('http://');
 
+const TEXTO_UBICACION =
+  'caminaPropiedades usa tu ubicación para mostrarte las propiedades en venta a tu alrededor.';
+// El permiso "Siempre" solo se pide al activar el modo caminata (opcional).
+const TEXTO_SIEMPRE =
+  'Con el modo caminata activo, caminaPropiedades usa tu ubicación aunque tengas el teléfono en el bolsillo, para avisarte cuando pasas por una cuadra con propiedades en venta. Se apaga sola a las 2 horas.';
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   owner: 'we2',
@@ -26,9 +32,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: BUNDLE_ID,
     supportsTablet: false,
     infoPlist: {
-      // Solo ubicación con la app abierta: no hay permiso "siempre".
-      NSLocationWhenInUseUsageDescription:
-        'caminaPropiedades usa tu ubicación mientras la app está abierta para mostrarte las propiedades en venta a tu alrededor.',
       ITSAppUsesNonExemptEncryption: false,
       ...(API_SIN_HTTPS ? { NSAppTransportSecurity: { NSAllowsArbitraryLoads: true, NSAllowsLocalNetworking: true } } : {}),
     },
@@ -41,9 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
-    permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
-    // Nada de ubicación en segundo plano.
-    blockedPermissions: ['ACCESS_BACKGROUND_LOCATION'],
+    permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION', 'POST_NOTIFICATIONS'],
     predictiveBackGestureEnabled: false,
   },
   plugins: [
@@ -59,15 +60,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-location',
       {
-        locationWhenInUsePermission:
-          'caminaPropiedades usa tu ubicación mientras la app está abierta para mostrarte las propiedades en venta a tu alrededor.',
-        // false = no se declara el permiso "siempre" en iOS.
-        locationAlwaysAndWhenInUsePermission: false,
-        locationAlwaysPermission: false,
-        isIosBackgroundLocationEnabled: false,
-        isAndroidBackgroundLocationEnabled: false,
+        locationWhenInUsePermission: TEXTO_UBICACION,
+        locationAlwaysAndWhenInUsePermission: TEXTO_SIEMPRE,
+        locationAlwaysPermission: TEXTO_SIEMPRE,
+        // Modo caminata: ubicación en segundo plano mientras está activo.
+        // En Android corre como servicio con una notificación fija.
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
       },
     ],
+    // Los avisos "en esta cuadra" son notificaciones locales: sin servidor.
+    ['expo-notifications', { color: '#1747C9', enableRemoteNotifications: false }],
     ['react-native-maps', { androidGoogleMapsApiKey: GOOGLE_MAPS_ANDROID }],
     'expo-iap',
   ],

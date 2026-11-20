@@ -35,6 +35,23 @@ export interface Aviso {
   desvio_pct?: number | null;
 }
 
+export interface PuntoHistorial {
+  fecha: string;
+  precio: number;
+  moneda: string;
+}
+
+export interface RespuestaDetalle {
+  aviso: Aviso;
+  precio_etiqueta: string | null;
+  precio_clp: number | null;
+  valor_uf: number | null;
+  publicado_desde: string | null;
+  dias_publicado: number | null;
+  historial: PuntoHistorial[];
+  cambio_precio: { desde: number; hasta: number; moneda: string; pct: number; fecha: string } | null;
+}
+
 export interface Zona {
   comuna: string;
   sector: string | null;
@@ -47,6 +64,7 @@ export interface Zona {
 export interface RespuestaCerca {
   fuera_de_zona: boolean;
   radio_m?: number;
+  recortado?: boolean;
   valor_uf?: number | null;
   avisos: Aviso[];
   zonas: Zona[];
@@ -166,8 +184,13 @@ export function cerca(lat: number, lon: number, radio: number, filtros: Filtros)
   return pedir<RespuestaCerca>('/cerca', { lat, lon, radio, ...filtros });
 }
 
-export function comparar(id: string, modo: Modo, credito?: Partial<{ pie: number; tasa: number; plazo: number }>) {
-  return pedir<RespuestaComparar>(`/propiedad/${encodeURIComponent(id)}/comparar`, { modo, ...credito });
+export function detalle(id: string) {
+  return pedir<RespuestaDetalle>(`/propiedad/${encodeURIComponent(id)}`);
+}
+
+// La comparación siempre se pide completa (con la parte de inversión).
+export function comparar(id: string, credito?: Partial<{ pie: number; tasa: number; plazo: number }>) {
+  return pedir<RespuestaComparar>(`/propiedad/${encodeURIComponent(id)}/comparar`, { modo: 'invertir', ...credito });
 }
 
 export function salud() {
@@ -176,7 +199,7 @@ export function salud() {
 
 export interface PedidoInforme {
   id_aviso: string;
-  modo: Modo;
+  modo: Modo; // siempre 'invertir': el PDF trae todo
   plataforma: 'ios' | 'android';
   producto: string;
   token_compra: string;

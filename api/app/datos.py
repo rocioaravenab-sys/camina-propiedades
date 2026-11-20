@@ -174,6 +174,13 @@ class Fuente:
             filas = self._get("ventas_rm", dict(filtros, select=_COLUMNAS))
         return fila_a_aviso(filas[0], valor_uf) if filas else None
 
+    def historial_precios(self, id_origen):
+        """Precios del aviso en cada captura, del más antiguo al más nuevo."""
+        return self._get("historial_precios_venta", {
+            "select": "fecha_captura,precio_venta,moneda", "id_origen": "eq.{}".format(id_origen),
+            "order": "fecha_captura.asc", "limit": "120",
+        })
+
     def datos_al(self):
         """Fecha de la última captura de ventas (para mostrar "datos al ...")."""
         filas = self._get("ventas_rm", {"select": "fecha_captura", "order": "fecha_captura.desc", "limit": "1"})

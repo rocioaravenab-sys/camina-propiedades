@@ -88,7 +88,7 @@ export function BotonRedondo({
   );
 }
 
-type NombreIcono = 'atras' | 'guardar' | 'guardado' | 'compartir' | 'mapa' | 'ubicacion' | 'flecha-abajo' | 'flecha-arriba' | 'igual' | 'derecha' | 'pin' | 'cerrar';
+type NombreIcono = 'atras' | 'guardar' | 'guardado' | 'compartir' | 'mapa' | 'ubicacion' | 'flecha-abajo' | 'flecha-arriba' | 'igual' | 'derecha' | 'pin' | 'cerrar' | 'caminar' | 'edificio';
 
 const TRAZOS: Record<NombreIcono, string[]> = {
   atras: ['M15 5l-7 7 7 7'],
@@ -103,6 +103,8 @@ const TRAZOS: Record<NombreIcono, string[]> = {
   derecha: ['M9 5l7 7-7 7'],
   pin: ['M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z', 'M12 7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z'],
   cerrar: ['M6 6l12 12', 'M18 6L6 18'],
+  caminar: ['M15 4a2 2 0 1 0-4 0 2 2 0 0 0 4 0z', 'M10 22l2-7 3 3v6', 'M7 13l3-5 4 1 3 4'],
+  edificio: ['M4 21V5l8-3 8 3v16', 'M9 21v-4h6v4', 'M8 8h2', 'M14 8h2', 'M8 12h2', 'M14 12h2'],
 };
 
 export function Icono({ nombre, size = 22, color = C.texto, grosor = 2 }: { nombre: NombreIcono; size?: number; color?: string; grosor?: number }) {

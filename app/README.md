@@ -1,26 +1,34 @@
 # App caminaPropiedades (iPhone y Android)
 
-Un solo código en Expo (React Native, SDK 58) para las dos tiendas. Sigue las 5
-pantallas del prototipo aprobado: mapa en vivo, comparar para vivir, comparar
-para invertir, informe PDF y guardadas (más la pantalla "Todavía no llegamos a
-tu zona").
+Un solo código en Expo (React Native, SDK 58) para las dos tiendas. Sigue las
+pantallas del prototipo (v2, pantallas 6 a 11): mapa, modo caminata, aviso en el
+teléfono, ficha, comparar con las del área y permiso del modo caminata, más
+informe PDF, guardadas y "Todavía no llegamos a tu zona".
 
 ## Qué hace
 
 | Pantalla | Archivo | Qué muestra |
 | --- | --- | --- |
-| Mapa | `src/app/(tabs)/index.tsx` | Mapa en vivo alrededor de la persona (radio 600 m, ~5 cuadras). Pines con precio y color para avisos con ubicación exacta; zonas sombreadas "N en este sector" para los aproximados. Filtros tipo, dormitorios y precio máximo. Selector Vivir/Invertir. Si arrastra el mapa aparece "Buscar en esta zona". Fuera de la RM muestra "Todavía no llegamos a tu zona". |
-| Ficha | `src/app/propiedad/[id].tsx` | Precio vs sector (semáforo y barra p25–mediana–p75), comparables cerca, barrio (metro, área verde, delincuencia, banderas). En "Para invertir": veredicto, arriendo estimado, cap rate, dividendo, flujo y crédito editable (por defecto pie 10%, 30 años, tasa de la API). Guardar y compartir. |
+| Mapa | `src/app/(tabs)/index.tsx` | Mapa que sigue a la persona. Al alejarlo o moverlo pide lo que falta (hasta 4 km por pedido) y lo suma a lo ya cargado; dibuja hasta 300 pines, los más cercanos al centro. Avisos exactos en el mismo edificio se juntan en "N en el edificio"; los aproximados son zonas "N en este sector". Filtros tipo, dormitorios y precio máximo. Botón "Modo caminata". Fuera de la RM muestra "Todavía no llegamos a tu zona". |
+| Modo caminata | `src/app/caminata.tsx`, `src/lib/caminata.ts` | Pantalla de permiso (ubicación "Siempre" y notificaciones). Activo: barra azul con Detener, "En esta cuadra" y recorrido. Se apaga sola a las 2 horas. |
+| Ficha | `src/app/propiedad/[id]/index.tsx` | Fotos (hasta 3), precio en UF y pesos, color frente al sector, si bajó o subió de precio, dormitorios, baños, estacionamientos, m², UF/m², gasto común, días publicado y portal, mini mapa. Guardar, compartir y "Comparar con las del área". |
+| Comparar | `src/app/propiedad/[id]/comparar.tsx` | Todo junto: precio vs sector (semáforo y barra p25–mediana–p75), parecidas a 5 cuadras, "Si la compras para arrendar" (arriendo, cap rate, dividendo, flujo, crédito editable) y barrio. Abajo el informe PDF. |
 | Informe | `src/app/informe/[id].tsx` | Compra del PDF con la tienda de Apple o Google ($14.990). |
 | Guardadas | `src/app/(tabs)/guardadas.tsx` | Informes comprados (abrir y compartir el PDF), propiedades guardadas y "Restaurar compras". |
 
-- **Ubicación solo con la app abierta.** `src/lib/ubicacion.ts` mira la posición
-  solo mientras el mapa está a la vista y la app en primer plano. No se pide el
-  permiso "siempre" en iOS y en Android se bloquea `ACCESS_BACKGROUND_LOCATION`.
-- **Sin cuenta.** Modo, filtros, crédito, favoritos y la lista de informes se
+- **Ubicación.** Sin modo caminata, `src/lib/ubicacion.ts` mira la posición solo
+  mientras el mapa está a la vista y la app en primer plano. El permiso
+  "Siempre" se pide solo al activar el modo caminata.
+- **Modo caminata.** `expo-location` corre la tarea `camina-modo-caminata` en
+  segundo plano (en Android como servicio, con la notificación fija "Modo
+  caminata activo"). Cada ~40 m consulta `/cerca` (150 m) y, si hay un edificio o
+  aviso exacto a menos de 70 m que no se avisó hoy, muestra una notificación
+  local. Máximo una cada 2 minutos. Al tocarla abre la ficha (un aviso) o el
+  mapa (varios). No hay servidor de notificaciones ni cuenta.
+- **Sin cuenta.** Filtros, crédito, favoritos y la lista de informes se
   guardan en el teléfono (`src/lib/estado.tsx`, AsyncStorage). Los PDF quedan en
   la carpeta de documentos de la app.
-- **API.** `src/lib/api.ts` llama a `/cerca`, `/propiedad/{id}/comparar`,
+- **API.** `src/lib/api.ts` llama a `/cerca`, `/propiedad/{id}`, `/propiedad/{id}/comparar`,
   `/salud` y (para el PDF) `POST /informe`.
 
 ## Compra del PDF

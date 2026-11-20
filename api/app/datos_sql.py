@@ -88,6 +88,14 @@ class FuenteSQL:
         )
         return fila_a_aviso(filas[0], valor_uf) if filas else None
 
+    def historial_precios(self, id_origen):
+        """Precios del aviso en cada captura, del más antiguo al más nuevo."""
+        return self._filas(
+            "SELECT fecha_captura, precio_venta, moneda FROM historial_precios_venta"
+            " WHERE id_origen = %(id)s ORDER BY fecha_captura LIMIT 120",
+            {"id": id_origen},
+        )
+
     def datos_al(self):
         filas = self._filas("SELECT max(fecha_captura) AS fecha_captura FROM ventas_rm", {})
         return filas[0]["fecha_captura"] if filas else None

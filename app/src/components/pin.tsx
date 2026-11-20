@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Circle, Marker } from 'react-native-maps';
 
 import type { Aviso, Zona } from '@/lib/api';
+import type { Edificio } from '@/lib/avisos';
 import { numero } from '@/lib/formato';
 import { C, colorDe, leyendaDe } from '@/lib/tema';
 
@@ -39,6 +40,26 @@ export function PinAviso({ aviso, onPress }: { aviso: Aviso; onPress: () => void
       <View style={[st.pin, { borderColor: color }]}>
         <Punto color={color} />
         <Text style={st.pinTexto}>{precioCorto(aviso)}</Text>
+      </View>
+    </Marker>
+  );
+}
+
+// Varios avisos exactos en el mismo edificio: un solo pin oscuro.
+export function PinEdificio({ edificio, onPress, activo }: { edificio: Edificio; onPress: () => void; activo: boolean }) {
+  const n = edificio.avisos.length;
+  const hayVerde = edificio.avisos.some((a) => a.color === 'verde');
+  const seguir = useCongelar(`${n}-${hayVerde}-${activo}`);
+  return (
+    <Marker
+      coordinate={{ latitude: edificio.lat, longitude: edificio.lon }}
+      onPress={onPress}
+      tracksViewChanges={seguir}
+      anchor={{ x: 0.5, y: 0.5 }}
+      accessibilityLabel={`${n} avisos en el mismo edificio${hayVerde ? ', alguno bajo el sector' : ''}`}>
+      <View style={[st.edificio, activo && { backgroundColor: C.azul }]}>
+        {hayVerde ? <Punto color="#4CC27E" /> : null}
+        <Text style={st.edificioTexto}>{n} en el edificio</Text>
       </View>
     </Marker>
   );
@@ -104,5 +125,20 @@ const st = StyleSheet.create({
     elevation: 3,
   },
   zonaActiva: { backgroundColor: C.texto },
+  edificio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.texto,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  edificioTexto: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   zonaTexto: { fontSize: 13, fontWeight: '600', color: C.texto },
 });

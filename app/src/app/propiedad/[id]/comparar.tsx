@@ -1,19 +1,17 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BarraPrecio } from '@/components/barra-precio';
 import { EditarCredito } from '@/components/editar-credito';
 import { FilaAviso } from '@/components/fila-aviso';
 import { precioCorto } from '@/components/pin';
-import { Aviso as Mensaje, Boton, BotonRedondo, Cargando, Icono, Punto, Selector, Tarjeta } from '@/components/ui';
+import { Aviso as Mensaje, Boton, BotonRedondo, Cargando, Icono, Punto, Tarjeta } from '@/components/ui';
 import * as api from '@/lib/api';
 import { useCompras } from '@/lib/compras';
 import { useEstado } from '@/lib/estado';
-import { clp, metros, numero, pct, tipologia, uf } from '@/lib/formato';
+import { clp, metros, numero, pct, tipologia } from '@/lib/formato';
 import { C, colorDe, colorTextoDe } from '@/lib/tema';
 
 const TITULO_PRECIO: Record<api.Color, string> = {
@@ -38,20 +36,20 @@ const NIVEL_CRIMEN: Record<string, { texto: string; color: string; fondo: string
   alto: { texto: 'Alta', color: C.rojoTexto, fondo: '#F8E1E1' },
 };
 
-export default function Ficha() {
+// Pantalla 10: todo junto, sin selector Vivir/Invertir.
+export default function Comparar() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { modo, setModo, credito, setCredito, favoritos, alternarFavorito, marcarNoEsta } = useEstado();
+  const { credito, setCredito, marcarNoEsta } = useEstado();
   const { precio: precioInforme } = useCompras();
   const [resultado, setResultado] = useState<{ clave: string; datos?: api.RespuestaComparar; error?: api.ErrorApi } | null>(null);
   const [intento, setIntento] = useState(0);
   const [editando, setEditando] = useState(false);
   const [todosComparables, setTodosComparables] = useState(false);
 
-  const creditoPedido = modo === 'invertir' ? credito : undefined;
-  const clave = JSON.stringify([id, modo, creditoPedido, intento]);
+  const clave = JSON.stringify([id, credito, intento]);
   const cargando = resultado?.clave !== clave;
-  // Mientras carga el otro modo se sigue mostrando lo anterior.
+  // Mientras recalcula con otro crédito se sigue mostrando lo anterior.
   const [ultimo, setUltimo] = useState<api.RespuestaComparar | null>(null);
   const datos = resultado?.clave === clave ? (resultado.datos ?? null) : ultimo;
   const error = resultado?.clave === clave ? (resultado.error ?? null) : null;
@@ -60,7 +58,7 @@ export default function Ficha() {
     if (!id) return;
     let vigente = true;
     api
-      .comparar(id, modo, creditoPedido)
+      .comparar(id, credito)
       .then((r) => {
         if (!vigente) return;
         setResultado({ clave, datos: r });
@@ -79,34 +77,26 @@ export default function Ficha() {
 
   const cargar = () => setIntento((n) => n + 1);
 
-  const volver = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const volver = () =>
+    router.canGoBack() ? router.back() : router.replace({ pathname: '/propiedad/[id]', params: { id: id ?? '' } });
 
   const a = datos?.aviso;
-  const guardado = !!(id && favoritos[id]);
 
   const cabecera = (
     <View style={[st.barra, { paddingTop: insets.top + 8 }]}>
-      <BotonRedondo onPress={volver} etiqueta="Volver">
+      <BotonRedondo onPress={volver} etiqueta="Volver a la ficha">
         <Icono nombre="atras" />
       </BotonRedondo>
-      {a ? (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <BotonRedondo
-            onPress={() => alternarFavorito({ ...a, color: datos?.precio.color })}
-            etiqueta={guardado ? 'Quitar de guardadas' : 'Guardar'}>
-            <Icono nombre={guardado ? 'guardado' : 'guardar'} size={20} color={guardado ? C.azul : C.texto} />
-          </BotonRedondo>
-          <BotonRedondo
-            etiqueta="Compartir"
-            onPress={() =>
-              Share.share({
-                message: `${a.tipo} ${tipologia(a.dormitorios, a.banos)} en ${a.sector || a.comuna}, ${uf(a.precio_uf)}${a.url ? '\n' + a.url : ''}`,
-              }).catch(() => {})
-            }>
-            <Icono nombre="compartir" size={20} />
-          </BotonRedondo>
-        </View>
-      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={st.tituloPantalla}>Comparar con las del área</Text>
+        {a ? (
+          <Text style={st.nota} numberOfLines={1}>
+            {[precioCorto(a), tipologia(a.dormitorios, a.banos), a.m2 ? `${numero(a.m2)} m²` : null, a.sector || a.comuna]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 
@@ -139,62 +129,12 @@ export default function Ficha() {
 
   const p = datos.precio;
   const inv = datos.inversion;
-  const caracteristicas = [
-    a.tipo,
-    a.dormitorios != null ? `${a.dormitorios} dorm.` : null,
-    a.banos != null ? `${a.banos} ${a.banos === 1 ? 'baño' : 'baños'}` : null,
-    a.m2 ? `${numero(a.m2)} m²` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
   const comparables = todosComparables ? datos.comparables : datos.comparables.slice(0, 4);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.fondo }}>
       {cabecera}
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        {a.fotos && a.fotos.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.fotos}>
-            {a.fotos.map((url) => (
-              <Image key={url} source={{ uri: url }} style={st.foto} contentFit="cover" transition={150} />
-            ))}
-          </ScrollView>
-        ) : null}
-        <View style={st.encabezado}>
-          <Text style={st.sub}>{caracteristicas}</Text>
-          <Text style={st.precio}>{precioCorto(a)}</Text>
-          <Text style={st.lugar}>
-            {[a.sector, a.comuna].filter(Boolean).join(', ')}
-            {a.uf_m2 ? ` · UF ${numero(a.uf_m2, 1)} por m²` : ''}
-          </Text>
-          {a.gasto_comun || a.estacionamientos ? (
-            <Text style={st.lugar}>
-              {[
-                a.gasto_comun ? `Gasto común ${clp(a.gasto_comun)}` : null,
-                a.estacionamientos ? `${a.estacionamientos} estac.` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          ) : null}
-          {!a.ubicacion_exacta ? <Text style={st.nota}>Ubicación aproximada: el portal no publica la dirección.</Text> : null}
-        </View>
-
-        <View style={st.bloque}>
-          <Selector
-            valor={modo}
-            onCambio={setModo}
-            opciones={[
-              { valor: 'vivir', texto: 'Para vivir' },
-              { valor: 'invertir', texto: 'Para invertir' },
-            ]}
-          />
-        </View>
-
-        {modo === 'invertir' ? (
-          <Inversion inv={inv} cargando={cargando} onEditar={() => setEditando(true)} />
-        ) : null}
-
         <View style={st.bloque}>
           <Tarjeta>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -217,7 +157,7 @@ export default function Ficha() {
 
         {datos.comparables.length > 0 ? (
           <View style={st.bloque}>
-            <Text style={st.seccion}>Comparables cerca</Text>
+            <Text style={st.seccion}>Parecidas a 5 cuadras</Text>
             <View style={{ gap: 8 }}>
               {comparables.map((c) => (
                 <FilaAviso
@@ -233,6 +173,11 @@ export default function Ficha() {
             ) : null}
           </View>
         ) : null}
+
+        <View style={st.bloque}>
+          <Text style={st.seccion}>Si la compras para arrendar</Text>
+        </View>
+        <Inversion inv={inv} cargando={cargando} onEditar={() => setEditando(true)} />
 
         {datos.barrio ? (
           <View style={st.bloque}>
@@ -279,12 +224,10 @@ export default function Ficha() {
 
       <View style={[st.pie, { paddingBottom: insets.bottom + 12 }]}>
         <Boton
+          tipo="oscuro"
           texto={`Informe completo en PDF · ${precioInforme}`}
           onPress={() => router.push({ pathname: '/informe/[id]', params: { id: a.id } })}
         />
-        {a.url ? (
-          <Boton texto="Ver aviso original en el portal" tipo="enlace" onPress={() => WebBrowser.openBrowserAsync(a.url!)} />
-        ) : null}
       </View>
 
       {inv && inv.disponible && editando ? (
@@ -398,13 +341,8 @@ function Celda({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 }
 
 const st = StyleSheet.create({
-  barra: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8 },
-  encabezado: { paddingHorizontal: 20, paddingTop: 4, gap: 4 },
-  fotos: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 },
-  foto: { width: 260, height: 180, borderRadius: 12, backgroundColor: C.borde },
-  sub: { fontSize: 13, color: C.texto3 },
-  precio: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.texto },
-  lugar: { fontSize: 14, color: C.texto2 },
+  barra: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  tituloPantalla: { fontSize: 19, fontWeight: '700', color: C.texto, letterSpacing: -0.3 },
   bloque: { marginHorizontal: 20, marginTop: 14 },
   circulo: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   tituloTarjeta: { fontSize: 19, fontWeight: '700' },
