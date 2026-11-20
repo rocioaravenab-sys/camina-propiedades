@@ -6,7 +6,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 const GOOGLE_MAPS_ANDROID = process.env.GOOGLE_MAPS_API_KEY_ANDROID ?? '';
 const BUNDLE_ID = 'cl.caminapropiedades.app';
 // Proyecto de EAS en la cuenta de Expo we2 (la misma de LaMeno).
-const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? '';
+const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID ?? 'f90bcf66-b212-48e4-8e46-89a1c02dfbcd';
 // Las versiones de prueba pueden apuntar a la API corriendo en el Mac por
 // http://; iOS bloquea http salvo que se permita aquí. Producción usa https.
 const API_SIN_HTTPS = API_URL.startsWith('http://');
